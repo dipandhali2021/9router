@@ -169,6 +169,12 @@ docker rm -f 9router
 # re-run the quick start command
 ```
 
+To pin a specific version instead of following `latest`, use a numbered image tag:
+
+```bash
+docker pull dipandhali2021/9router:1.5.86
+```
+
 ---
 
 # 🛠 For Developers
@@ -176,7 +182,7 @@ docker rm -f 9router
 ## Build image locally (test)
 
 ```bash
-cd app && docker build -t 9router .
+docker build -t 9router .
 
 docker run --rm -p 20128:20128 \
   -v "$HOME/.9router:/app/data" \
@@ -184,11 +190,29 @@ docker run --rm -p 20128:20128 \
   9router
 ```
 
+The Dockerfile uses the official Alpine and npm registries by default. Regional mirrors can be supplied when needed:
+
+```bash
+docker build \
+  --build-arg ALPINE_MIRROR=mirrors.aliyun.com \
+  --build-arg NPM_REGISTRY=https://registry.npmmirror.com/ \
+  -t 9router .
+```
+
 ## Publish
 
 Images go to two registries at once:
 - `dipandhali2021/9router` on Docker Hub
 - `ghcr.io/dipandhali2021/9router` on GHCR
+
+The CI builds `linux/amd64` and `linux/arm64` on native runners, health-checks each platform image, verifies the resulting manifest and `/api/health`, then publishes:
+
+- `ghcr.io/dipandhali2021/9router:X.Y.Z` + `:latest`
+- `dipandhali2021/9router:X.Y.Z` + `:latest`
+
+The `v` prefix is used only for the git tag; image tags omit it. A stable tag push promotes `latest`, but a prerelease tag such as `vX.Y.Z-rc.1` publishes only its numbered image by default. Prereleases require an explicit manual `promote_latest` opt-in. Promotion happens only after both native platform builds, both platform health checks, manifest inspection, and the resolved-manifest smoke test succeed. A failed or timed-out platform build therefore cannot move `latest`.
+
+The workflow rejects SemVer build metadata such as `v1.2.3+build.7` because the `+` form is not a valid Docker image tag. The git tag and both `package.json` versions must match exactly.
 
 ### One-time setup
 
@@ -203,29 +227,45 @@ gh secret set DOCKERHUB_TOKEN    -R dipandhali2021/9router   # paste the token
 
 GHCR needs nothing — it uses the workflow's own `GITHUB_TOKEN`.
 
+The optional repository variables `ALPINE_MIRROR` and `NPM_REGISTRY` can override the default package mirrors used by the CI Docker build.
+
 ### Release build (git tag)
 
 ```bash
 node scripts/release.js "Release title" "Notes"   # recommended
 # or
-git tag v0.5.56 && git push origin v0.5.56
+git tag v1.5.86 && git push origin v1.5.86
 ```
 
-A `v*` tag builds amd64 + arm64 and publishes `:{version}` plus `:latest`.
+### Manual republish (existing tag)
 
-### Manual build (any branch, no tag)
+To republish an existing tag, run the `Build and Push Docker Image` workflow manually and provide the exact tag, for example `v1.5.86`, in the `release_tag` input. Manual runs publish the numbered tag but leave `latest` unchanged by default:
+
+```text
+release_tag:     v1.5.86
+promote_latest:  false
+```
+
+The `promote_latest` checkbox is an explicit opt-in for changing `latest`. Use it when a deliberate rollback or recovery should make that version the current default.
 
 ```bash
-# tag defaults to the version in package.json
-gh workflow run docker-publish.yml -R dipandhali2021/9router --ref <branch>
-
-# explicit tag, and leave :latest where it is
-gh workflow run docker-publish.yml -R dipandhali2021/9router --ref <branch> \
-  -f tag=0.5.56-fal -f latest=false
+gh workflow run docker-publish.yml -R dipandhali2021/9router \
+  -f release_tag=v1.5.86 -f promote_latest=true
 ```
 
-Watch it with `gh run watch -R dipandhali2021/9router`. The run summary lists
-every tag it pushed.
+Watch it with `gh run watch -R dipandhali2021/9router`. The run summary lists every tag it pushed.
+
+Numbered image tags are mutable because a republish can replace their manifest. For a deployment that must be immutable, pin the image digest instead:
+
+```bash
+docker pull dipandhali2021/9router@sha256:<verified-digest>
+```
+
+The release workflow runs `/api/health` on each native `amd64` and `arm64` platform image before it uploads the digest artifact or assembles the multi-platform manifest. It then runs a second health check against the resolved version manifest before any requested `latest` promotion.
+
+During recovery, the selected tag remains the application source while the Dockerfile from the workflow revision is used, so an older tag can be rebuilt with the current publishing fixes.
+
+The workflow is tag-driven. Creating a git tag does not automatically create a GitHub Release, so the Releases page and the published package/image tags can be at different versions unless a maintainer creates a release separately.
 
 Workflow: `.github/workflows/docker-publish.yml`
 

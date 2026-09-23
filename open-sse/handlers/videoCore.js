@@ -257,35 +257,79 @@ export async function handleVideoProxyCore({
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Unknown video action: ${action}`);
   }
 
-  // Providers whose API already matches /v1/videos are proxied verbatim; the
-  // rest translate through an adapter.
+  // Two adapter styles must both work:
+  // - Plan adapters (openrouter, vertex) implement buildRequest() and are
+  //   consulted in doFetch below.
+  // - Request/response adapters (qwen, fal-ai, replicate) supply create/poll
+  //   URLs via createUrl/pollUrl and are translated here.
+  // - No adapter (xAI): byte-for-byte proxy through defaultPlan().
+  const adapter = getVideoAdapter(provider);
+  const usesPlanAdapter = !!adapter && typeof adapter.buildRequest === "function";
   let translated = null;
-  try {
-    translated = buildAdapterRequest({ provider, requestId, rawBody, contentType, credentials });
-  } catch (error) {
-    return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message || `Invalid ${provider} video request`);
+  if (adapter && !usesPlanAdapter) {
+    try {
+      translated = buildAdapterRequest({ provider, requestId, rawBody, contentType, credentials });
+    } catch (error) {
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message || `Invalid ${provider} video request`);
+    }
   }
 
-  const method = requestId ? "GET" : "POST";
-  const url = translated ? translated.url : buildUpstreamUrl(config, action, requestId);
   const fetchSignal = combineSignals(signal, timeoutMs);
 
-  const doFetch = (token) =>
-    fetch(url, {
-      method,
-      headers: translated
+  // Default (xAI shape) request plan; translated adapters override URL/headers/body.
+  const defaultPlan = () => {
+    const method = requestId ? "GET" : "POST";
+    const token = credentials?.accessToken || credentials?.apiKey;
+    if (translated) {
+      return {
+        method,
+        url: translated.url,
         // An adapter that set its own Authorization keeps it — fal authenticates
         // with `Key <token>`, and a Bearer header would be rejected. Adapters
         // that leave it unset still get the bearer default.
-        ? { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...translated.headers }
-        : buildHeaders({ token, contentType: method === "POST" ? contentType : null, idempotencyKey: method === "POST" ? idempotencyKey : null }),
-      body: translated ? translated.body : method === "POST" ? rawBody : undefined,
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...translated.headers },
+        body: translated.body,
+        signal: fetchSignal,
+      };
+    }
+    return {
+      method,
+      url: buildUpstreamUrl(config, action, requestId),
+      headers: buildHeaders({
+        token,
+        contentType: method === "POST" ? contentType : null,
+        idempotencyKey: method === "POST" ? idempotencyKey : null,
+      }),
+      body: method === "POST" ? rawBody : undefined,
       signal: fetchSignal,
-    });
+    };
+  };
 
+  // Rebuilt per attempt so the auth retry below picks up the refreshed token.
+  const doFetch = async () => {
+    const plan = usesPlanAdapter
+      ? await adapter.buildRequest({
+          config, action, requestId, rawBody, contentType, idempotencyKey, credentials, log,
+          token: credentials?.accessToken || credentials?.apiKey,
+        })
+      : defaultPlan();
+    if (plan.error) return { planError: plan.error };
+    return {
+      response: await fetch(plan.url, {
+        method: plan.method,
+        headers: plan.headers,
+        body: plan.body,
+        signal: fetchSignal,
+      }),
+    };
+  };
+
+  const method = requestId ? "GET" : "POST";
   let upstream;
   try {
-    upstream = await doFetch(credentials?.accessToken || credentials?.apiKey);
+    const first = await doFetch();
+    if (first.planError) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `[${provider}] ${first.planError}`);
+    upstream = first.response;
   } catch (error) {
     if (error?.name === "AbortError" || error?.name === "TimeoutError") {
       return createErrorResult(HTTP_STATUS.REQUEST_TIMEOUT, `[${provider}] video ${method} aborted: ${error.message}`);
@@ -313,7 +357,9 @@ export async function handleVideoProxyCore({
         await upstream.body?.cancel?.();
       } catch { /* noop */ }
       try {
-        upstream = await doFetch(credentials.accessToken || credentials.apiKey);
+        const retry = await doFetch();
+        if (retry.planError) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `[${provider}] ${retry.planError}`);
+        upstream = retry.response;
       } catch (error) {
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, sanitizeSecrets(`[${provider}] video retry after refresh failed: ${error.message}`, credentials));
       }
@@ -329,8 +375,8 @@ export async function handleVideoProxyCore({
     return createErrorResult(upstream.status, `[${provider}] ${message.slice(0, 2000)}`);
   }
 
-  // Adapter providers: reshape into the published contract. A 200 can still
-  // carry an upstream error envelope (no task id), which is a bad gateway here.
+  // Request/response adapters: reshape into the published contract. A 200 can
+  // still carry an upstream error envelope (no task id), which is a bad gateway here.
   if (translated) {
     let normalized;
     try {
@@ -367,13 +413,25 @@ export async function handleVideoProxyCore({
     };
   }
 
-  // Success: pass the upstream JSON through untouched (request_id / status / video.url).
+  // Success: pass the upstream JSON through untouched (request_id / status / video.url),
+  // unless the adapter maps a provider-native shape onto it (Vertex operations).
+  let outBody = bodyText;
+  let outType = upstream.headers.get("content-type") || "application/json";
+  if (adapter?.transformResponse) {
+    try {
+      outBody = JSON.stringify(adapter.transformResponse(JSON.parse(bodyText)));
+      outType = "application/json";
+    } catch {
+      // Non-JSON or unexpected shape — fall back to the raw upstream body.
+    }
+  }
+
   return {
     success: true,
-    response: new Response(bodyText, {
+    response: new Response(outBody, {
       status: upstream.status,
       headers: {
-        "Content-Type": upstream.headers.get("content-type") || "application/json",
+        "Content-Type": outType,
         "Access-Control-Allow-Origin": "*",
       },
     }),
