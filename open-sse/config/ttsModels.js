@@ -48,6 +48,20 @@ const MIMO_VOICES = [
   { id: "Dean",          name: "Dean" },
 ].map((v) => ({ type: "tts", ...v }));
 
+// Deepgram Flux TTS preset voices (from OpenRouter — deepgram/flux-tts:free).
+// Voice ids are passed verbatim to /api/v1/audio/speech as `voice`.
+const DEEPGRAM_FLUX_VOICES = [
+  "flux-alexis-en", "flux-bree-en", "flux-brittany-en", "flux-brooke-en",
+  "flux-bruce-en", "flux-cliff-en", "flux-cole-en", "flux-colin-en",
+  "flux-conor-en", "flux-donovan-en", "flux-drew-en", "flux-elise-en",
+  "flux-gemma-en", "flux-haley-en", "flux-hannah-en", "flux-heather-en",
+  "flux-jack-en", "flux-kai-en", "flux-kelsey-en", "flux-kit-en",
+  "flux-maeve-en", "flux-marcelo-en", "flux-marcus-en", "flux-meena-en",
+  "flux-meghan-en", "flux-miles-en", "flux-naveen-en", "flux-paige-en",
+  "flux-priya-en", "flux-rufus-en", "flux-sean-en", "flux-sharon-en",
+  "flux-sienna-en", "flux-tanner-en", "flux-wade-en", "flux-wes-en",
+].map((id) => ({ id, name: id, type: "tts" }));
+
 // ── TTS Config (config-driven, single source of truth) ─────────────────────
 export const TTS_MODELS_CONFIG = {
   openai: {
@@ -69,11 +83,16 @@ export const TTS_MODELS_CONFIG = {
       { id: "openai/gpt-4o-mini-tts", name: "GPT-4o Mini TTS", type: "tts" },
       { id: "openai/tts-1-hd",        name: "TTS-1 HD",        type: "tts" },
       { id: "openai/tts-1",           name: "TTS-1",           type: "tts" },
+      { id: "deepgram/flux-tts:free",        name: "Deepgram Flux TTS (Free)", type: "tts" },
+      { id: "fish-audio/s2.1-pro-free:free", name: "Fish Audio S2.1 Pro Free", type: "tts" },
     ],
     voices: {
       "openai/gpt-4o-mini-tts": VOICES_FULL,
       "openai/tts-1":           VOICES_STANDARD,
       "openai/tts-1-hd":        VOICES_STANDARD,
+      "deepgram/flux-tts:free": DEEPGRAM_FLUX_VOICES,
+      // fish-audio uses its provider-side default voice (no `voice` param needed)
+      "fish-audio/s2.1-pro-free:free": [],
     },
     allVoices: VOICES_FULL,
   },

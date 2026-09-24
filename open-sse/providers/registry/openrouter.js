@@ -36,6 +36,8 @@ export default {
     { id: "openai/gpt-4o-mini-tts", name: "GPT-4o Mini TTS", kind: "tts" },
     { id: "openai/tts-1-hd", name: "TTS-1 HD", kind: "tts" },
     { id: "openai/tts-1", name: "TTS-1", kind: "tts" },
+    { id: "deepgram/flux-tts:free", name: "Deepgram Flux TTS (Free)", kind: "tts" },
+    { id: "fish-audio/s2.1-pro-free:free", name: "Fish Audio S2.1 Pro Free", kind: "tts" },
     { id: "openai/dall-e-3", name: "DALL-E 3 (via OpenRouter)", params: ["size","quality","style","response_format"], kind: "image" },
     { id: "openai/gpt-image-1", name: "GPT Image 1 (via OpenRouter)", params: ["n","size","quality","response_format"], kind: "image" },
     { id: "google/imagen-3.0-generate-002", name: "Imagen 3 (via OpenRouter)", params: ["n","size"], kind: "image" },
@@ -52,7 +54,10 @@ export default {
     headers: {"HTTP-Referer":"https://endpoint-proxy.local","X-Title":"Endpoint Proxy"},
   },
   ttsConfig: {
+    // chat-completions + audio-modality SSE for openai/* TTS models; the adapter
+    // switches to the dedicated /audio/speech endpoint for deepgram/fish-audio.
     baseUrl: "https://openrouter.ai/api/v1/chat/completions",
+    audioSpeechUrl: "https://openrouter.ai/api/v1/audio/speech",
     defaultModel: "openai/gpt-4o-mini-tts",
     headers: {"HTTP-Referer":"https://endpoint-proxy.local","X-Title":"Endpoint Proxy"},
   },
