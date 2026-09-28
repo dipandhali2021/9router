@@ -172,7 +172,7 @@ docker rm -f 9router
 To pin a specific version instead of following `latest`, use a numbered image tag:
 
 ```bash
-docker pull dipandhali2021/9router:1.5.86
+docker pull dipandhali2021/9router:1.5.91
 ```
 
 ---
@@ -234,15 +234,15 @@ The optional repository variables `ALPINE_MIRROR` and `NPM_REGISTRY` can overrid
 ```bash
 node scripts/release.js "Release title" "Notes"   # recommended
 # or
-git tag v1.5.86 && git push origin v1.5.86
+git tag v1.5.91 && git push origin v1.5.91
 ```
 
 ### Manual republish (existing tag)
 
-To republish an existing tag, run the `Build and Push Docker Image` workflow manually and provide the exact tag, for example `v1.5.86`, in the `release_tag` input. Manual runs publish the numbered tag but leave `latest` unchanged by default:
+To republish an existing tag, run the `Build and Push Docker Image` workflow manually and provide the exact tag, for example `v1.5.91`, in the `release_tag` input. Manual runs publish the numbered tag but leave `latest` unchanged by default:
 
 ```text
-release_tag:     v1.5.86
+release_tag:     v1.5.91
 promote_latest:  false
 ```
 
@@ -250,7 +250,7 @@ The `promote_latest` checkbox is an explicit opt-in for changing `latest`. Use i
 
 ```bash
 gh workflow run docker-publish.yml -R dipandhali2021/9router \
-  -f release_tag=v1.5.86 -f promote_latest=true
+  -f release_tag=v1.5.91 -f promote_latest=true
 ```
 
 Watch it with `gh run watch -R dipandhali2021/9router`. The run summary lists every tag it pushed.
