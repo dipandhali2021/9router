@@ -4,6 +4,7 @@ import {
 } from "../services/auth.js";
 import { getSettings, getCustomModels } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
+import { getKeyAccessContext, enforceKeyAccessResolved } from "../services/keyAccess.js";
 import { handleSttCore } from "open-sse/handlers/sttCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -107,22 +108,27 @@ export async function handleStt(request) {
       log,
       tag: "STT",
       // Each attempt gets a freshly built FormData — see snapshotSttForm.
-      handleSingleModel: (_body, m) => handleSingleModelStt(formDataFromSnapshot(snapshot, m), m),
+      handleSingleModel: (_body, m) => handleSingleModelStt(formDataFromSnapshot(snapshot, m), m, request),
     });
   }
 
-  return handleSingleModelStt(formData, String(modelStr));
+  return handleSingleModelStt(formData, String(modelStr), request);
 }
 
 /**
  * Run one STT model through the account-fallback loop.
  * Returns a Response so it can be used as a combo attempt.
  */
-async function handleSingleModelStt(formData, modelStr) {
+async function handleSingleModelStt(formData, modelStr, request = null) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
+
+  // Per-key access control: checked before any credential lookup.
+  const keyAccessDenied = await enforceKeyAccessResolved(await getKeyAccessContext(request), modelStr, provider, model);
+  if (keyAccessDenied) return keyAccessDenied;
+
   log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
 
   const modelTransport = await resolveCustomModelTransport(provider, model);

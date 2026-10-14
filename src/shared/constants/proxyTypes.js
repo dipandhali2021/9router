@@ -56,6 +56,18 @@ export const PROXY_POOL_TYPES = [
     urlLabel: "Relay URL",
     urlPlaceholder: "https://my-relay.my-org.deno.net",
   },
+  {
+    value: "netlify",
+    label: "Netlify Relay",
+    badge: "netlify relay",
+    icon: "rocket_launch",
+    iconClassName: "text-teal-500",
+    isRelay: true,
+    hostSuffixes: [".netlify.app"],
+    urlLabel: "Relay URL",
+    // Netlify serves the relay from a function path rather than the site root.
+    urlPlaceholder: "https://your-site.netlify.app/.netlify/functions/relay",
+  },
 ];
 
 export const DEFAULT_PROXY_POOL_TYPE = "http";
@@ -78,7 +90,7 @@ const RELAY_STRICT_HINT = "Fail request if the relay is unreachable instead of f
 const RELAY_IMPORT_PLACEHOLDER = "https://my-relay.vercel.app\nhttps://my-relay.my-account.workers.dev";
 
 const RELAY_IMPORT_HINT =
-  "One relay URL per line. The platform is read from the hostname (*.vercel.app, *.workers.dev, *.deno.net) and falls back to the type selected above.";
+  "One relay URL per line. The platform is read from the hostname (*.vercel.app, *.workers.dev, *.deno.net, *.netlify.app) and falls back to the type selected above.";
 
 /** Look up a type descriptor; unknown values fall back to the plain HTTP proxy. */
 export function getProxyPoolType(type) {

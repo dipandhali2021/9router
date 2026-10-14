@@ -7,6 +7,7 @@ import {
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
+import { getKeyAccessContext, enforceKeyAccessResolved } from "../services/keyAccess.js";
 import { handleEmbeddingsCore } from "open-sse/handlers/embeddingsCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -87,18 +88,18 @@ export async function handleEmbeddings(request) {
       body,
       log,
       tag: "EMBEDDINGS",
-      handleSingleModel: (b, m) => handleSingleModelEmbeddings(b, m, url.pathname, apiKey),
+      handleSingleModel: (b, m) => handleSingleModelEmbeddings(b, m, url.pathname, apiKey, request),
     });
   }
 
-  return handleSingleModelEmbeddings(body, modelStr, url.pathname, apiKey);
+  return handleSingleModelEmbeddings(body, modelStr, url.pathname, apiKey, request);
 }
 
 /**
  * Run one embeddings model through the account-fallback loop.
  * Returns a Response so it can be used as a combo attempt.
  */
-async function handleSingleModelEmbeddings(body, modelStr, endpointPath, apiKey) {
+async function handleSingleModelEmbeddings(body, modelStr, endpointPath, apiKey, request = null) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) {
     log.warn("EMBEDDINGS", "Invalid model format", { model: modelStr });
@@ -106,6 +107,10 @@ async function handleSingleModelEmbeddings(body, modelStr, endpointPath, apiKey)
   }
 
   const { provider, model } = modelInfo;
+
+  // Per-key access control: checked before any credential lookup.
+  const keyAccessDenied = await enforceKeyAccessResolved(await getKeyAccessContext(request), modelStr, provider, model);
+  if (keyAccessDenied) return keyAccessDenied;
 
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
