@@ -169,6 +169,8 @@ gh run view <run-id> --repo dipandhali2021/9router --log-failed   # when red
 
 **npm processes large packages asynchronously.** A green npm run may log `npm notice Your package is being processed and may take a few minutes to become available.` followed by `+ @dipandhali2021/9router@X.Y.Z` — and the version still 404s on the registry for several minutes. Absence right after the run is NOT a failure: poll until it appears, and never re-dispatch the workflow while it's processing (that race is what produces the duplicate failed dispatch runs).
 
+The packument (versions/dist-tags) can go live before the tarball blob — poll both. Observed on v1.5.104 (68 MB): packument ~7 min after the run finished, tarball blob ~12 min. Control check: an older version's tarball URL (e.g. `.../9router-1.5.99.tgz`) should return 200, proving the URL format is fine and the new one is still processing.
+
 ```bash
 # poll until the version surfaces (20 s interval):
 for i in $(seq 1 40); do
